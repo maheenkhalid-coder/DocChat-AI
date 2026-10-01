@@ -77,18 +77,6 @@ A brand-new FAISS index is built for each upload, so a new document never uses a
 
 ---
 
-### 🧯 Friendly Error Handling
-
-Clear messages (no raw tracebacks) for:
-
-* Wrong file type or corrupted PDF
-* Empty PDF or PDF with no extractable text (e.g. scanned images)
-* PDFs that are too large
-* Embedding failures
-* LLM/API errors and rate limits
-
----
-
 ### 🚦 Built-in Demo Limits
 
 | Limit                        | Value             |
@@ -195,43 +183,6 @@ START → retrieve → generate_answer → END
 
 ---
 
-# 🤖 AI Models
-
-### Language Model
-
-```text
-openai/gpt-oss-120b
-```
-
-Used to generate answers from the retrieved document context.
-
-### Embeddings
-
-```text
-sentence-transformers/all-MiniLM-L6-v2
-```
-
-Used to convert document chunks into vectors for semantic search.
-
----
-
-# ⚙️ Run Locally
-
-```bash
-# 1. Clone the repo
-git clone YOUR_REPO_LINK
-cd YOUR_REPO_FOLDER
-
-# 2. Install dependencies
-pip install -r requirements.txt
-
-# 3. Create a .env file with your Groq API key
-GROQ_API_KEY=your_key_here
-
-# 4. Start the app
-streamlit run streamlit_app.py
-```
-
 ### Project Structure
 
 ```text
@@ -247,14 +198,6 @@ streamlit run streamlit_app.py
 # 🚀 Deployment
 
 DocChat AI is deployed on **Streamlit Community Cloud**.
-
-Add your key under **App settings → Secrets**:
-
-```toml
-GROQ_API_KEY = "your_key_here"
-```
-
----
 
 # ⚠️ Current Limitations
 
