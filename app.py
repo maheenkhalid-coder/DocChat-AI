@@ -1,5 +1,6 @@
 import os
 import json
+import html
 import threading
 from datetime import date
 from pathlib import Path
@@ -13,7 +14,7 @@ import streamlit as st
 
 st.set_page_config(
     page_title="DocChat AI",
-    page_icon="🎓",
+    page_icon="📄",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -48,6 +49,9 @@ DAILY_LIMIT = 50
 
 # Maximum length of one user question
 MAX_QUESTION_LENGTH = 300
+
+# Maximum PDF size (page limit is MAX_PAGES in chatbot.py)
+MAX_FILE_MB = 10
 
 # File used to persist the daily counter
 USAGE_FILE = Path(__file__).parent / "usage.json"
@@ -396,6 +400,13 @@ def format_sources(sources) -> str:
     return " · ".join(parts)
 
 
+# NOTE ABOUT HTML BELOW:
+# Every st.markdown(... unsafe_allow_html=True) block is written as ONE
+# line of joined strings, with no indentation and no blank lines.
+# Markdown turns lines indented by 4+ spaces into a code block, which
+# would show the raw HTML text instead of rendering it.
+
+
 # --------------------------------------------------
 # Sidebar
 # --------------------------------------------------
@@ -403,7 +414,7 @@ def format_sources(sources) -> str:
 with st.sidebar:
 
     st.markdown(
-        '<p class="cd-side-title">UniAssist AI</p>',
+        '<p class="cd-side-title">DocChat AI</p>',
         unsafe_allow_html=True,
     )
 
@@ -415,12 +426,8 @@ with st.sidebar:
     )
 
     st.markdown(
-        f"""
-        <div class="cd-stat">
-            Questions remaining today<br>
-            <b>{daily_left}</b> / {DAILY_LIMIT}
-        </div>
-        """,
+        '<div class="cd-stat">Questions remaining today<br>'
+        f'<b>{daily_left}</b> / {DAILY_LIMIT}</div>',
         unsafe_allow_html=True,
     )
 
@@ -450,7 +457,7 @@ with st.sidebar:
 
     st.caption(
         "Your PDF is split into chunks, converted to embeddings and "
-        "stored in a FAISS index. For each question, UniAssist AI "
+        "stored in a FAISS index. For each question, DocChat AI "
         "retrieves the most relevant passages and a LangGraph workflow "
         "asks the LLM to answer using only those passages."
     )
@@ -461,24 +468,18 @@ with st.sidebar:
 # --------------------------------------------------
 
 chip = (
-    f"📄 {', '.join(st.session_state.doc_names)}"
+    "📄 " + html.escape(", ".join(st.session_state.doc_names))
     if st.session_state.graph is not None
     else "No document uploaded yet"
 )
 
 st.markdown(
-    f"""
-    <div class="cd-hero">
-        <p class="cd-title">UniAssist AI</p>
-
-        <p class="cd-sub">
-            AI-powered PDF assistant. Upload any document and get
-            answers with page references in seconds.
-        </p>
-
-        <span class="cd-chip">{chip}</span>
-    </div>
-    """,
+    '<div class="cd-hero">'
+    '<p class="cd-title">DocChat AI</p>'
+    '<p class="cd-sub">AI-powered PDF assistant. Upload any document '
+    'and get answers with page references in seconds.</p>'
+    f'<span class="cd-chip">{chip}</span>'
+    '</div>',
     unsafe_allow_html=True,
 )
 
@@ -489,13 +490,15 @@ st.markdown(
 
 st.markdown("#### Upload your PDF")
 
-files = st.file_uploader(
-    "Choose one or more PDF files",
+uploaded = st.file_uploader(
+    "Choose a PDF file",
     type=["pdf"],
-    accept_multiple_files=True,
+    accept_multiple_files=False,   # demo: one PDF at a time
     label_visibility="collapsed",
-    help="Text-based PDFs only, up to 200 pages each.",
+    help=f"Text-based PDF only, up to 50 pages and {MAX_FILE_MB} MB.",
 )
+
+files = [uploaded] if uploaded else []
 
 key = (
     tuple((f.name, f.size) for f in files)
@@ -532,6 +535,13 @@ elif (
             "Reading your PDF and building the search index. "
             "Large files can take a minute..."
         ):
+
+            for f in files:
+                if f.size > MAX_FILE_MB * 1024 * 1024:
+                    raise DocumentError(
+                        f"'{f.name}' is larger than {MAX_FILE_MB} MB. "
+                        "Please upload a smaller PDF."
+                    )
 
             payload = [
                 (f.name, f.getvalue())
@@ -592,25 +602,20 @@ if (
 if doc_ready:
 
     rows = "".join(
-        f'<div class="cd-doc-row">📄 {n}</div>'
+        f'<div class="cd-doc-row">📄 {html.escape(n)}</div>'
         for n in st.session_state.doc_names
     )
 
     st.markdown(
-        f"""
-        <div class="cd-doc">
-            {rows}
-
-            <div class="cd-doc-status">
-                ✓ Document processed successfully. Ready to chat.
-            </div>
-
-            <div class="cd-doc-meta">
-                {st.session_state.n_chunks}
-                searchable sections indexed
-            </div>
-        </div>
-        """,
+        '<div class="cd-doc">'
+        f'{rows}'
+        '<div class="cd-doc-status">'
+        '✓ Document processed successfully. Ready to chat.'
+        '</div>'
+        '<div class="cd-doc-meta">'
+        f'{st.session_state.n_chunks} searchable sections indexed'
+        '</div>'
+        '</div>',
         unsafe_allow_html=True,
     )
 
@@ -695,11 +700,9 @@ for msg in st.session_state.messages:
         ):
 
             st.markdown(
-                f"""
-                <span class="cd-sources">
-                    Sources: {format_sources(msg["sources"])}
-                </span>
-                """,
+                '<span class="cd-sources">Sources: '
+                f'{html.escape(format_sources(msg["sources"]))}'
+                '</span>',
                 unsafe_allow_html=True,
             )
 
@@ -720,7 +723,7 @@ else:
 
     placeholder = (
         "Ask a question about your document "
-        "(max 300 characters)..."
+        f"(max {MAX_QUESTION_LENGTH} characters)..."
     )
 
 
@@ -730,6 +733,7 @@ typed = st.chat_input(
         not doc_ready
         or daily_limit_reached
     ),
+    max_chars=MAX_QUESTION_LENGTH,
 )
 
 
@@ -754,6 +758,7 @@ if (
 
     # ----------------------------------------------
     # Check question length BEFORE using the LLM
+    # (backup check; the chat box also enforces it)
     # ----------------------------------------------
 
     if len(question) > MAX_QUESTION_LENGTH:
