@@ -28,7 +28,7 @@ embeddings = HuggingFaceEmbeddings(
 
 llm = ChatGroq(
     model="openai/gpt-oss-120b",
-    temperature=0.2  # lower than before: we want facts from the document, not creativity
+    temperature=0.2,  # lower than before: we want facts from the document, not creativity
     max_tokens=300
 )
 
