@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import html
 import threading
@@ -6,6 +7,7 @@ from datetime import date
 from pathlib import Path
 
 import streamlit as st
+from dotenv import load_dotenv
 
 
 # --------------------------------------------------
@@ -36,6 +38,15 @@ except Exception:
 # --------------------------------------------------
 # Backend
 # --------------------------------------------------
+
+load_dotenv()  # reads the local .env file (does nothing on Streamlit Cloud)
+
+if not os.getenv("GROQ_API_KEY"):
+    st.error(
+        "This app isn't configured yet: GROQ_API_KEY is missing. "
+        "Add it to your .env file (local) or to Streamlit Secrets (cloud)."
+    )
+    st.stop()
 
 from chatbot import build_vectorstore, build_graph, DocumentError
 
@@ -400,6 +411,59 @@ def format_sources(sources) -> str:
     return " · ".join(parts)
 
 
+# --------------------------------------------------
+# Clean LLM answers before showing them
+# --------------------------------------------------
+
+def clean_answer(text: str) -> str:
+    """
+    Makes LLM answers safe to show with st.markdown.
+
+    LLMs sometimes write formulas in LaTeX (\\[ ... \\], \\frac{...}{...}).
+    Streamlit shows that as ugly raw text, and it is even worse when the
+    answer is cut off in the middle of a formula (no closing \\] at all).
+    So we turn LaTeX into plain, readable text instead.
+    """
+    # Detect LaTeX BEFORE we add any backslashes ourselves
+    has_latex = bool(re.search(r"\\(?:[A-Za-z]+|[\[\]()])", text))
+
+    # Escape $ so "$100 and $200" isn't treated as a formula
+    text = text.replace("$", "\\$")
+
+    if not has_latex:
+        return text
+
+    # Remove math delimiters: \[ \] \( \)
+    text = re.sub(r"\\[\[\]()]", "", text)
+
+    # \text{...}, \mathrm{...} -> just the content (repeat for nested ones)
+    for _ in range(5):
+        text = re.sub(
+            r"\\(?:text|textbf|mathrm|mathbf|operatorname)\{([^{}]*)\}",
+            r"\1",
+            text,
+        )
+
+    # \frac{a}{b} -> (a) / (b)   (inner fractions first)
+    for _ in range(5):
+        text = re.sub(r"\\frac\{([^{}]*)\}\{([^{}]*)\}", r"(\1) / (\2)", text)
+
+    # Common symbols
+    symbols = {
+        "\\sum": "Σ", "\\times": "×", "\\cdot": "·", "\\div": "÷",
+        "\\leq": "≤", "\\geq": "≥", "\\approx": "≈", "\\%": "%",
+        "\\left": "", "\\right": "",
+    }
+    for latex, plain in symbols.items():
+        text = text.replace(latex, plain)
+
+    # Anything left over (e.g. a cut-off \frac{ ) and stray braces
+    text = re.sub(r"\\[A-Za-z]+", "", text)
+    text = text.replace("{", "").replace("}", "")
+
+    return text
+
+
 # NOTE ABOUT HTML BELOW:
 # Every st.markdown(... unsafe_allow_html=True) block is written as ONE
 # line of joined strings, with no indentation and no blank lines.
@@ -690,9 +754,10 @@ for msg in st.session_state.messages:
         avatar=avatar,
     ):
 
-        st.markdown(
-            msg["content"]
-        )
+        if msg["role"] == "assistant":
+            st.markdown(clean_answer(msg["content"]))
+        else:
+            st.markdown(msg["content"].replace("$", "\\$"))
 
         if (
             msg["role"] == "assistant"
@@ -808,7 +873,7 @@ if (
         avatar="🧑‍🎓",
     ):
 
-        st.markdown(question)
+        st.markdown(question.replace("$", "\\$"))
 
 
     # ----------------------------------------------
@@ -858,6 +923,13 @@ if (
 
 
         except Exception:
+
+            # Don't leave an unanswered question in the chat history
+            if (
+                st.session_state.messages
+                and st.session_state.messages[-1]["role"] == "user"
+            ):
+                st.session_state.messages.pop()
 
             st.error(
                 "I couldn't get an answer right now. "
