@@ -1,230 +1,88 @@
-# 📄 DocChat AI — Chat with Any PDF
+# 📄 DocChat AI
 
-> **Upload a PDF. Ask anything. Get answers with page references.**
+### Your PDF, answered. With page numbers.
 
-## 🚀 Live Demo
+An AI assistant that reads **your own PDF**, finds the right passages, and answers **only from the document**, with the source pages shown under every answer.
 
-### 👉 [Open DocChat AI](https://docchatassistant.streamlit.app/)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://docchatassistant.streamlit.app/)
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-RAG%20Workflow-1C3C3C)
+![FAISS](https://img.shields.io/badge/Vector%20DB-FAISS-0467DF)
+![Groq](https://img.shields.io/badge/LLM-Groq-F55036)
 
-> **Note:** The app is hosted on Streamlit's free tier, so the first request may take a little longer after a period of inactivity.
->
-> To protect free-tier LLM usage, the demo is limited to **one PDF at a time (up to 50 pages / 10 MB)**, **5 questions per visitor**, and **50 questions per day** in total.
+## 🚀 Live demo
 
-<!-- Add a screenshot or GIF of your app here:
-![DocChat AI screenshot](screenshot.png)
--->
+**👉 [docchatassistant.streamlit.app](https://docchatassistant.streamlit.app/)**
 
----
+**Hiring manager? Test it in 60 seconds:**
 
-## 📌 Overview
+1. Upload any text-based PDF (handbook, report, paper, manual...)
+2. Click a starter question, or ask your own
+3. Check the **Sources** badge under the answer and compare it with the page in your PDF
 
-**DocChat AI** is an AI-powered document assistant that lets you upload your own PDF and ask questions about it in plain language.
+> It's a free-tier demo, so it has limits: one PDF at a time (up to 50 pages / 10 MB) and 50 questions per day shared by all visitors. The first request may be slow after the app has been idle.
 
-Instead of scrolling through long documents, you can simply ask:
+<!-- Add a screenshot or GIF here: ![DocChat AI screenshot](docs/screenshot.png) -->
 
-* 📘 *"What is this document about?"*
-* 📝 *"Summarize the main points."*
-* ✅ *"What are the key requirements mentioned?"*
-* 💳 *"What does the document say about refunds?"*
+## ✨ Features
 
-DocChat AI finds the most relevant parts of your document and answers **only from that content**, with the source pages shown under every answer.
+- **Chat with your own PDF:** upload a document and ask questions in plain language. It works with any text-based PDF, not just one topic.
+- **Page-referenced answers:** every answer shows its sources, for example `handbook.pdf — pages 12, 15`, so you can verify it.
+- **No made-up answers:** the model is told to use only the retrieved document text. If the answer isn't there, it says: *"I couldn't find this information in the uploaded document."*
+- **Fresh index per upload:** a new FAISS index is built for each file, so a new document never uses an old document's data.
+- **Friendly errors:** clear messages (no tracebacks) for wrong file types, corrupted PDFs, scanned PDFs with no text, files that are too large, and API or rate-limit problems.
+- **Built-in cost control:** page, size, question and answer limits plus a daily cap (see below).
 
-It works with any text-based PDF: handbooks, reports, research papers, manuals, contracts, course material and more.
+## 🧠 How it works
 
----
-
-# ✨ Features
-
-### 📤 Upload Your Own PDF
-
-Upload a PDF and the app processes it automatically. A status card confirms when the document is ready to chat.
-
-```text
-Upload PDF
-    ↓
-Document processed ✓
-    ↓
-Ask questions
+```mermaid
+flowchart TD
+    A["Upload PDF"] --> B["PyPDFLoader: text + page numbers"]
+    B --> C["Split into chunks (800 chars, 100 overlap)"]
+    C --> D["Embeddings: all-MiniLM-L6-v2"]
+    D --> E[("FAISS index, rebuilt for every upload")]
+    Q["Your question"] --> R["retrieve: top 4 chunks"]
+    E --> R
+    R --> G["generate_answer: Groq LLM"]
+    G --> H{"Answer in the document?"}
+    H -- yes --> I["Answer + source pages"]
+    H -- no --> J["I couldn't find this information in the uploaded document."]
 ```
 
----
+- **LangGraph workflow:** a simple graph, `START → retrieve → generate_answer → END`, with a shared `TypedDict` state (question, context, sources, answer).
+- **One graph per document:** `build_graph(vectorstore)` creates a graph that can only search the current document's index.
+- **Page tracking:** every chunk keeps its file name and page number, which is how the sources are built.
+- **Streamlit reruns:** the graph is kept in `st.session_state`, and the index is only rebuilt when the uploaded file changes. The embedding model is loaded once at startup.
 
-### 🔎 Answers with Page References
+## 🛡️ Token and quota protection
 
-Every answer shows where the information came from.
+Built so a public demo can't burn through free-tier API limits:
 
-```text
-Sources: handbook.pdf — pages 12, 15
-```
+| Level | Limit |
+|---|---|
+| Per document | 1 PDF, up to 50 pages and 10 MB |
+| Per question | Up to 300 characters, top 4 chunks sent to the LLM |
+| Per answer | 600-token cap, low reasoning effort, answers kept under about 200 words |
+| Whole demo (all visitors) | 50 questions per day, counted in a thread-safe shared counter |
+| Safe failures | Missing API key, bad files and API errors show friendly messages instead of crashing |
 
-This makes the answers easy to verify.
+When the daily limit is reached, the chat box is disabled with a message. All limits are constants at the top of `streamlit_app.py` and `chatbot.py`.
 
----
+## 🛠️ Tech stack
 
-### 🛡️ Honest Answers (No Made-Up Information)
+- **[LangGraph](https://github.com/langchain-ai/langgraph):** RAG workflow
+- **[LangChain](https://www.langchain.com/):** PDF loading, text splitting, retriever
+- **[Groq](https://groq.com/):** LLM inference (`openai/gpt-oss-120b`)
+- **[FAISS](https://github.com/facebookresearch/faiss):** vector search
+- **[Hugging Face](https://huggingface.co/):** embeddings (`sentence-transformers/all-MiniLM-L6-v2`)
+- **PyPDF:** PDF text extraction
+- **[Streamlit](https://streamlit.io/):** UI and hosting
 
-The assistant is instructed to answer **only** from the retrieved document content. If the answer isn't in the document, it says:
+## ⚠️ Known limitations
 
-```text
-"I couldn't find this information in the uploaded document."
-```
-
----
-
-### 🔄 Fresh Index for Every Document
-
-A brand-new FAISS index is built for each upload, so a new document never uses an old document's data. Removing the file clears the chat and the index.
-
----
-
-### 🚦 Built-in Demo Limits
-
-| Limit                        | Value             |
-| ---------------------------- | ----------------- |
-| Questions per visitor        | 5                 |
-| Questions per day (all users)| 50                |
-| PDF size                     | 10 MB             |
-| PDF length                   | 50 pages          |
-| Question length              | 300 characters    |
-| Answer length                | 600 tokens        |
-
-An optional access code can also be enabled with a `DEMO_CODE` secret.
-
----
-
-# 🏗️ System Architecture
-
-```text
-              ┌─────────────────────┐
-              │     Upload PDF      │
-              └──────────┬──────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │     PyPDFLoader     │
-              │  (text + page no.)  │
-              └──────────┬──────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │   Text Chunking     │
-              │  800 chars / 100    │
-              │      overlap        │
-              └──────────┬──────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │     Embeddings      │
-              │   all-MiniLM-L6-v2  │
-              └──────────┬──────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │    FAISS Index      │
-              └──────────┬──────────┘
-                         │
-   ┌─────────────────────┴─────────────────────┐
-   │             LangGraph workflow            │
-   │                                           │
-   │   Question → retrieve → generate_answer   │
-   │              (top 4)     (Groq LLM)       │
-   └─────────────────────┬─────────────────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │  Answer + Sources   │
-              └─────────────────────┘
-```
-
----
-
-# 🧠 RAG Design
-
-The whole document is **not** sent to the LLM for every question. Instead:
-
-```text
-User Question
-      ↓
-Similarity Search in FAISS (top 4 chunks)
-      ↓
-Context (with file name + page numbers) + Question
-      ↓
-Groq LLM
-      ↓
-Answer + Source pages
-```
-
-This keeps answers focused on the relevant parts of the document and keeps token usage low.
-
-### LangGraph Workflow
-
-```text
-START → retrieve → generate_answer → END
-```
-
-* **retrieve** — finds the most relevant chunks and their page numbers
-* **generate_answer** — answers strictly from that context, or says the information wasn't found
-
----
-
-# 🛠️ Tech Stack
-
-| Technology           | Purpose                          |
-| -------------------- | -------------------------------- |
-| **Python**           | Core application                 |
-| **Streamlit**        | Web interface & deployment       |
-| **LangGraph**        | RAG workflow                     |
-| **LangChain**        | RAG components                   |
-| **Groq**             | LLM inference                    |
-| **FAISS**            | Vector database                  |
-| **Hugging Face**     | Sentence embeddings              |
-| **all-MiniLM-L6-v2** | Text embeddings                  |
-| **PyPDF**            | PDF loading                      |
-
----
-
-### Project Structure
-
-```text
-├── chatbot.py          # PDF processing, FAISS index, LangGraph workflow
-├── streamlit_app.py    # Streamlit UI, upload flow, usage limits
-├── requirements.txt
-├── .env                # GROQ_API_KEY (not committed)
-└── .gitignore          # includes .env and usage.json
-```
-
----
-
-# 🚀 Deployment
-
-DocChat AI is deployed on **Streamlit Community Cloud**.
-
-# ⚠️ Current Limitations
-
-* Scanned PDFs (images only) are not supported, since there is no OCR.
-* Each question is answered independently, so follow-up questions don't use earlier chat history.
-* Broad requests like "summarize everything" only see the most relevant chunks, not the full document.
-* The demo limits (1 PDF, 5 questions per visitor) exist to protect free-tier usage.
-
----
-
-# 🔮 Future Improvements
-
-* Conversation memory for follow-up questions
-* OCR support for scanned PDFs
-* Multiple PDFs in one session
-* Full-document summarization
-
----
-
-# 🎯 Use Cases
-
-* 🎓 University handbooks and course material
-* 📚 Research papers and reports
-* 📋 Contracts and company documents
-* 🔧 User manuals and technical documentation
-* 📖 Books and long reading material
-
----
-
-Upload a document, let DocChat AI index it, and **chat with your PDF**.
+- The daily counter is saved in a local file, so it can reset when the app restarts or redeploys. For a hard cap, store it in an external database.
+- There is no per-visitor limit, so one visitor can use the whole daily quota.
+- Scanned PDFs (images only) are not supported, since there is no OCR.
+- Each question is answered on its own, so follow-ups like "explain that more" don't use earlier chat history.
+- Sources list every page that was retrieved, which may include pages the answer didn't actually need.
+- Broad questions like "summarize everything" only see the top matching chunks, not the full document.
