@@ -1,0 +1,17 @@
+langgraph
+langchain
+langchain-groq
+python-dotenv
+torch
+torchvision
+
+langchain-community
+langchain-text-splitters
+langchain-huggingface
+sentence-transformers
+faiss-cpu # for database
+pypdf
+
+
+# UI
+streamlit
