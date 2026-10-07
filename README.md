@@ -53,6 +53,19 @@ flowchart TD
 - **One graph per document:** `build_graph(vectorstore)` creates a graph that can only search the current document's index.
 - **Page tracking:** every chunk keeps its file name and page number, which is how the sources are built.
 - **Streamlit reruns:** the graph is kept in `st.session_state`, and the index is only rebuilt when the uploaded file changes. The embedding model is loaded once at startup.
+  
+## 🐳 Run with Docker
+
+DocChat AI can also be run locally as a Docker container.
+
+```bash
+docker build -t docchat-ai .
+docker run --env-file .env -p 8501:8501 docchat-ai
+```
+
+Then open **http://localhost:8501** in your browser.
+
+The Docker setup packages the Python environment and application dependencies into a reproducible container, so the app can run consistently across different machines.
 
 ## 🛡️ Token and quota protection
 
